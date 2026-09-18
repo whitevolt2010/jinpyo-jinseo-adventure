@@ -433,7 +433,8 @@ const sfx = {
   // 뿅! 부드럽게 올라가는 점프
   jump: () => { V(260, 0.22, { type: 'sine', vol: 0.16, f2: 720, glide: 0.16 }); V(520, 0.12, { type: 'triangle', vol: 0.04, f2: 1100 }); noise(0.08, 0.05, { f: 3000, type: 'highpass' }); },
   // 반짝! 별 먹는 소리
-  coin: () => { chime([88, 95], 0.06, 0.1, 0.4); },
+  coin: () => { chime([88, 95], 0.06, 0.1, 0.35); },
+  coinSoft: () => V(mtof(95), 0.12, { type: 'sine', vol: 0.06 }),
   // 뽁! 먼지뭉치 밟는 소리
   stomp: () => { V(420, 0.16, { type: 'sine', vol: 0.2, f2: 120 }); noise(0.12, 0.18, { f: 900, f2: 300 }); V(900, 0.08, { type: 'triangle', vol: 0.05, f2: 1400 }, 0.05); },
   // 통! 블록 치는 소리
@@ -477,7 +478,7 @@ const sfx = {
 };
 
 // 같은 소리가 너무 자주 겹치지 않게 (호랑이/로켓으로 적을 한꺼번에 날릴 때 등)
-const SFX_GAP = { whoosh: 4000, roar: 800, stomp: 110, coin: 45, bump: 90, land: 200, flap: 160, pad: 700, boing: 150, double: 120, hurt: 500, brk: 80, pop: 150, sprout: 150, power: 300, frog: 400 };
+const SFX_GAP = { whoosh: 4000, roar: 800, stomp: 110, coin: 70, coinSoft: 160, bump: 90, land: 200, flap: 160, pad: 700, boing: 150, double: 120, hurt: 500, brk: 80, pop: 150, sprout: 150, power: 300, frog: 400 };
 const lastSfx = {};
 for (const k of Object.keys(sfx)) {
   const f = sfx[k];
@@ -891,10 +892,10 @@ function moveY(b, isPlayer) {
 
 /* ---------- Game actions ---------- */
 function addScore(n, x, y) { score += n; if (x != null) pops.push({ x, y, text: String(n), life: 45 }); }
-function addCoin(x, y) {
+function addCoin(x, y, soft) {
   coins++; score += 100;
   if (coins >= 100) { coins -= 100; lives++; sfx.oneup(); pops.push({ x, y, text: '1UP!', life: 60 }); }
-  else sfx.coin();
+  else if (soft) sfx.coinSoft(); else sfx.coin();
 }
 function knock(e) {
   e.state = 'flip'; e.vy = -5; e.vx = e.x < P.x ? -1 : 1; addScore(200, e.x, e.y - 6); sfx.stomp();
@@ -1187,9 +1188,11 @@ function updateItems() {
       continue;
     }
     if (it.k === 'cfly') {
+      it.t = (it.t || 0) + 1;
       const tx = P.x + P.w / 2, ty = P.y + P.h / 2, dx = tx - it.x, dy = ty - it.y, d = Math.hypot(dx, dy);
-      if (d < 10) { it.dead = true; addCoin(it.x - 8, it.y - 12); sparkle(it.x, it.y, 4, ['#ffc83d', '#ffffff']); }
-      else { it.x += dx / d * 6; it.y += dy / d * 6; }
+      const sp = Math.abs(P.vx) + 5 + it.t * 0.4; // 진표·진서보다 항상 빠르게, 점점 더 빠르게
+      if (d < 14 || it.t > 40) { it.dead = true; addCoin(it.x - 8, it.y - 12, true); if (items.length < 60) sparkle(tx, ty, 2, ['#ffc83d', '#ffffff']); }
+      else { const m = Math.min(sp, d); it.x += dx / d * m; it.y += dy / d * m; }
       continue;
     }
     if (it.k === 'big') {
@@ -1211,6 +1214,7 @@ function updateItems() {
 function updateFx() {
   for (const p of parts) { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.life--; if (p.vr) p.rot += p.vr; if (p.drag) { p.vx *= p.drag; p.vy *= p.drag; } }
   parts = parts.filter(p => p.life > 0 && p.y < VH + 20);
+  if (parts.length > 320) parts.splice(0, parts.length - 320);
   for (const p of pops) { p.y -= 0.5; p.life--; }
   pops = pops.filter(p => p.life > 0);
   for (const [k, v] of bumps) { if (v >= 10) bumps.delete(k); else bumps.set(k, v + 1); }
@@ -2253,7 +2257,7 @@ function showOverlay(html, cls) {
 function hideOverlay() { ov.hidden = true; document.body.classList.add('playing'); canvas.focus && canvas.focus(); }
 
 /* 태블릿·휴대폰: 켜자마자 가운데 큰 '전체 화면으로 시작' 버튼 (아이폰은 홈 화면 추가 안내) */
-const GAME_VERSION = 20;
+const GAME_VERSION = 21;
 const PUBLIC_URL = 'https://whitevolt2010.github.io/jinpyo-jinseo-adventure/';
 const isTouch = () => document.body.classList.contains('touch');
 const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -2450,7 +2454,7 @@ function layout() {
   if (touch && cw / ch * VH < 300) ch = Math.max(150, cw * VH / 300);
   $('rotate').hidden = !(touch && !rotateDismissed && window.innerHeight > window.innerWidth * 1.1);
   stage.style.width = Math.floor(cw) + 'px'; stage.style.height = Math.floor(ch) + 'px';
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
   canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
   VIEWH = touch ? VH + 58 : VH;
   scale = canvas.height / VIEWH;

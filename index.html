@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" href="favicon.png">
-<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html,body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<style>html,body{margin:0;padding:0;width:100%;height:100%}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>진표와 진서의 모험</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -41,7 +41,9 @@
     touch-action: none;
   }
   #app {
-    position: relative;
+    position: fixed;
+    inset: 0;
+    width: 100vw;
     height: 100%;
     height: 100dvh;
     padding-inline: 16px;
@@ -201,21 +203,6 @@
   /* Touch controls (태블릿) */
   html, body { overscroll-behavior: none; }
   body.touch { position: fixed; inset: 0; }
-  /* 아이폰 Safari: 화면을 위로 쓸어 올려 주소창을 접을 수 있게 문서를 조금 길게 */
-  html.ios-safari, html.ios-safari body { overflow: visible; height: auto; overscroll-behavior: auto; }
-  body.touch.ios-safari { position: static; min-height: calc(100vh + 160px); touch-action: pan-y; }
-  body.ios-safari #app { position: fixed; top: 0; left: 0; right: 0; height: 100vh; }
-  #swipeHint {
-    position: fixed; inset: 0; z-index: 25;
-    display: grid; place-items: center; text-align: center;
-    background: rgba(17,15,38,.72); color: #fff;
-    touch-action: pan-y;
-  }
-  #swipeHint .arrow { font-size: 64px; line-height: 1; animation: swipeUp 1.4s ease-in-out infinite; }
-  @keyframes swipeUp { 0% { transform: translateY(30px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(-40px); opacity: 0; } }
-  #swipeHint .big { font-size: clamp(22px, 7vh, 40px); margin: 8px 0 6px; text-shadow: 0 3px 0 var(--ink); }
-  #swipeHint .small { font-size: clamp(13px, 3.8vh, 18px); opacity: .85; }
-  #swipeHint button { margin-top: 14px; }
   body.touch #app { padding: 0; }
   body.touch #stage { border-radius: 0; box-shadow: none; }
   body.touch .icon-btn { width: 54px; height: 54px; border-radius: 16px; }
@@ -298,7 +285,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .btn:active, .icon-btn:active { transform: none; }
-    .rot-icon, .btn.huge, #swipeHint .arrow { animation: none; }
+    .rot-icon, .btn.huge { animation: none; }
   }
 </style>
 
@@ -338,14 +325,6 @@
         <div class="hint">여기를 눌러 점프</div>
         <svg viewBox="0 0 20 20"><path d="M10 3 L17 12 H3 Z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>점프</span>
       </div>
-    </div>
-  </div>
-  <div id="swipeHint" hidden>
-    <div>
-      <div class="arrow">👆</div>
-      <div class="big">화면을 위로 쓸어 올려 주세요</div>
-      <div class="small">위쪽 주소창이 접히면서 게임이 꽉 찬 화면이 돼요</div>
-      <button class="btn ghost" id="swipeSkip">이대로 할게요</button>
     </div>
   </div>
   <div id="rotate" hidden>
@@ -2274,32 +2253,12 @@ function showOverlay(html, cls) {
 function hideOverlay() { ov.hidden = true; document.body.classList.add('playing'); canvas.focus && canvas.focus(); }
 
 /* 태블릿·휴대폰: 켜자마자 가운데 큰 '전체 화면으로 시작' 버튼 (아이폰은 홈 화면 추가 안내) */
-const GAME_VERSION = 19;
+const GAME_VERSION = 20;
 const PUBLIC_URL = 'https://whitevolt2010.github.io/jinpyo-jinseo-adventure/';
 const isTouch = () => document.body.classList.contains('touch');
 const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isStandalone = () => !!(navigator.standalone || (window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches)));
 const inFrame = () => { try { return window.self !== window.top; } catch (e) { return true; } };
-const iosSafari = () => isIOS() && !isStandalone() && !inFrame();
-function needSplash() { return isTouch() && !isFull() && !isStandalone() && !iosSafari(); }
-let swipeSkipped = false;
-function barsCollapsed() {
-  // 가로에서 창 높이가 화면 높이와 거의 같으면 주소창이 접힌 거예요
-  const shortSide = Math.min(screen.width, screen.height);
-  return window.innerHeight >= shortSide * 0.9;
-}
-function updateSwipeHint() {
-  if (!iosSafari()) return;
-  const landscape = window.innerWidth > window.innerHeight;
-  $('swipeHint').hidden = swipeSkipped || !landscape || barsCollapsed();
-}
-function setupIOSSafari() {
-  if (!iosSafari()) return;
-  document.documentElement.classList.add('ios-safari'); document.body.classList.add('ios-safari');
-  $('swipeSkip').addEventListener('click', () => { swipeSkipped = true; updateSwipeHint(); });
-  window.addEventListener('scroll', () => { layout(); updateSwipeHint(); }, { passive: true });
-  updateSwipeHint();
-}
 const SHARE_ICON = '<svg viewBox="0 0 20 20" style="width:1.1em;height:1.1em;vertical-align:-.15em"><path d="M10 2v11M6 6l4-4 4 4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 9H4v9h12V9h-1" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>';
 function showSplash() {
   S = 'title'; Music.stop();
@@ -2482,7 +2441,6 @@ document.addEventListener('contextmenu', e => e.preventDefault());
 
 /* ---------- Layout ---------- */
 function layout() {
-  if (document.body.classList.contains('ios-safari')) app.style.height = window.innerHeight + 'px';
   const r = app.getBoundingClientRect();
   const touch = document.body.classList.contains('touch');
   const w = Math.max(200, r.width - (touch ? 0 : 32)), h = Math.max(150, r.height - (touch ? 0 : 24));
@@ -2491,7 +2449,6 @@ function layout() {
   if (!touch && cw / ch * VH > 620) cw = ch * 620 / VH;
   if (touch && cw / ch * VH < 300) ch = Math.max(150, cw * VH / 300);
   $('rotate').hidden = !(touch && !rotateDismissed && window.innerHeight > window.innerWidth * 1.1);
-  if (typeof updateSwipeHint === 'function') updateSwipeHint();
   stage.style.width = Math.floor(cw) + 'px'; stage.style.height = Math.floor(ch) + 'px';
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
@@ -2514,13 +2471,11 @@ function loop(now) {
 }
 
 function boot(data) {
-  setupIOSSafari();
   layout();
   if (data && data.inGame && typeof data.world === 'number' && LEVELS[data.world]) {
     lives = data.lives || 5; score = data.score || 0; coins = data.coins || 0; cpX = data.cpX ?? null;
     loadLevel(data.world, true); showIntro();
-  } else if (needSplash()) showSplash();
-  else showTitle();
+  } else showTitle();
   requestAnimationFrame(t => { last = t; loop(t); });
 }
 try { window.claude?.hot?.snapshot?.(() => ({ inGame: !['title', 'win', 'over'].includes(S), world, lives, score, coins, cpX })); } catch (e) {}

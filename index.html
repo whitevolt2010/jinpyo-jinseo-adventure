@@ -379,7 +379,7 @@ function initAudio() {
     }
     const pr = initAudio.el.play(); if (pr && pr.catch) pr.catch(() => {});
   } catch (e) {}
-  if (AC) { if (AC.state !== 'running') AC.resume(); return; }
+  if (AC) { if (AC.state !== 'running' && S !== 'paused') AC.resume(); return; }
   try {
     AC = new (window.AudioContext || window.webkitAudioContext)();
     const comp = AC.createDynamicsCompressor();
@@ -390,6 +390,7 @@ function initAudio() {
     // 무음 버퍼 한 번 재생 (iOS 잠금 해제)
     const b = AC.createBuffer(1, 1, 22050), src = AC.createBufferSource(); src.buffer = b; src.connect(AC.destination); src.start(0);
     if (AC.state !== 'running') AC.resume();
+    if (S === 'play' && !Music.timer && L) Music.start(THEMES[LEVELS[world].theme].song);
   } catch (e) { AC = null; }
 }
 ['pointerdown', 'touchend', 'keydown'].forEach(t => window.addEventListener(t, () => initAudio(), { passive: true }));
@@ -478,7 +479,7 @@ const sfx = {
 };
 
 // 같은 소리가 너무 자주 겹치지 않게 (호랑이/로켓으로 적을 한꺼번에 날릴 때 등)
-const SFX_GAP = { whoosh: 4000, roar: 800, stomp: 110, coin: 70, coinSoft: 160, bump: 90, land: 200, flap: 160, pad: 700, boing: 150, double: 120, hurt: 500, brk: 80, pop: 150, sprout: 150, power: 300, frog: 400 };
+const SFX_GAP = { check: 1000, whoosh: 4000, roar: 800, stomp: 110, coin: 70, coinSoft: 160, bump: 90, land: 200, flap: 160, pad: 700, boing: 150, double: 120, hurt: 500, brk: 80, pop: 150, sprout: 150, power: 300, frog: 400 };
 const lastSfx = {};
 for (const k of Object.keys(sfx)) {
   const f = sfx[k];
@@ -683,12 +684,17 @@ function build(seg, fn, seed) {
   // 도착 건물 뒤로 땅을 끝까지 이어요 (기다리는 형제 자리)
   for (let x = L.castleX; x < w; x++) { grid[13][x] = 'G'; grid[14][x] = 'D'; }
   // 공중 블록 올리기: 9줄 → 8줄, 5줄 이상 높은 블록 → 2줄 위
-  const moved = [];
+  const moved = [], coinsUp = [];
   for (let y = 0; y < ROWS; y++) for (let x = 0; x < w; x++) {
     const c = grid[y][x];
-    if ('B?MU'.includes(c) && y <= 9) { moved.push([x, y <= 5 ? y - 2 : y - 1, c]); grid[y][x] = ' '; }
+    if ('B?MU'.includes(c) && y <= 9) {
+      const d = y <= 5 ? 2 : 1;
+      moved.push([x, Math.max(0, y - d), c]); grid[y][x] = ' ';
+      if (y > 0 && grid[y - 1][x] === 'o') { coinsUp.push([x, Math.max(0, y - 1 - d)]); grid[y - 1][x] = ' '; }
+    }
   }
-  for (const [x, y, c] of moved) if (y >= 0) grid[y][x] = c;
+  for (const [x, y] of coinsUp) grid[y][x] = 'o';
+  for (const [x, y, c] of moved) grid[y][x] = c;
   return L;
 }
 
@@ -734,7 +740,7 @@ const LV_PARK = b => {
   b.ground(147, 170); b.up(150, 3); b.t(158, 9, '?'); b.t(159, 9, '?'); b.en(156); b.bee(160, 7); b.en(163); b.bee(166, 6);
   b.coins(171, 173, 10);
   b.ground(174, 211); b.en(178); b.up(182, 8); b.col(190, 8);
-  b.pw(7, 7, 'wings'); b.boost(44); b.boost(113); b.pw(150, 6, 'tiger');
+  b.pw(7, 7, 'wings'); b.boost(113); b.pw(150, 6, 'tiger');
   b.flag(198); b.castle(202);
 };
 const LV_LIB = b => {
@@ -832,7 +838,7 @@ function spawnEnt(e) {
   return { k: 'bee', x: e.tx * T, y: e.ty * T, w: 13, h: 9, bx: e.tx * T, by: e.ty * T, vx: -0.55, vy: 0, state: 'live', t: e.tx, active: false };
 }
 function newPlayer(x) {
-  return { x, y: 13 * T - 64, w: 24, h: 64, squash: 0, form: null, formT: 0, rainbowT: 0, magnetT: 0, padT: 0, run: 0, jumps: 0, spin: 0, boost: 0, trail: [], vx: 0, vy: 0, face: 1, big: false, inv: 0, coyote: 0, buffer: 0, anim: 0, onGround: false, combo: 0, hidden: false };
+  return { x, y: 13 * T - 48, w: 24, h: 48, squash: 0, form: null, formT: 0, rainbowT: 0, magnetT: 0, padT: 0, run: 0, jumps: 0, spin: 0, boost: 0, trail: [], vx: 0, vy: 0, face: 1, big: false, inv: 0, coyote: 0, buffer: 0, anim: 0, onGround: false, combo: 0, hidden: false };
 }
 function loadLevel(i, useCp) {
   world = i;
@@ -1040,7 +1046,8 @@ function updatePlayer() {
     p.vx += dir * ((p.onGround ? 0.26 : 0.19) + skid + boostK * 0.18);
     if (Math.abs(p.vx) > max) p.vx = Math.sign(p.vx) * Math.max(max, Math.abs(p.vx) - 0.12);
     p.face = dir;
-  } else if (p.padT <= 0) {
+  } else {
+    if (p.padT > 0) p.padT = Math.min(p.padT, 8);
     p.vx *= p.onGround ? 0.8 : 0.95;
     if (Math.abs(p.vx) < 0.05) p.vx = 0;
   }
@@ -1058,7 +1065,8 @@ function updatePlayer() {
     p.vy = -(p.form === 'bunny' ? 9.6 : 7.8); p.jumps = 2; p.spin = 1; p.buffer = 0;
     sfx.double(); ring(p.x + p.w / 2, p.y + p.h - 4);
   }
-  if (p.form === 'wings' && !p.onGround && jumpHeld && p.coyote <= 0) {
+  if (p.form === 'wings' && p.y < 8 && p.vy < 0) p.vy = Math.max(p.vy, 0.5);
+  if (p.form === 'wings' && !p.onGround && jumpHeld && p.coyote <= 0 && p.y >= 8) {
     p.vy = Math.max(p.vy - 0.95, -3.4);
     if (frame % 12 === 0) sfx.flap();
   }
@@ -1121,7 +1129,7 @@ function updatePlayer() {
   if (p.boost > 0.8 && frame % 7 === 0) parts.push({ x: p.x + p.w / 2 + (Math.random() - 0.5) * 30, y: p.y + Math.random() * p.h, vx: 0, vy: 0, grav: 0, life: 8, size: 1, color: '#ffe45c', shape: 'bolt', seed: Math.random() });
 
   // checkpoints
-  for (const c of L.cps) if (cpX !== c && p.x > c * T) {
+  for (const c of L.cps) if ((cpX == null || c > cpX) && p.x > c * T) {
     cpX = c; sfx.check(); pops.push({ x: c * T - 10, y: 8 * T, text: '체크포인트!', life: 70 });
     sparkle(c * T + 8, 9 * T, 12, ['#8be36a', '#fff7e3']);
   }
@@ -1212,11 +1220,13 @@ function updateItems() {
 }
 
 function updateFx() {
+  if (shake > 0) { shake *= 0.85; if (shake < 0.3) shake = 0; }
   for (const p of parts) { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.life--; if (p.vr) p.rot += p.vr; if (p.drag) { p.vx *= p.drag; p.vy *= p.drag; } }
   parts = parts.filter(p => p.life > 0 && p.y < VH + 20);
   if (parts.length > 320) parts.splice(0, parts.length - 320);
   for (const p of pops) { p.y -= 0.5; p.life--; }
   pops = pops.filter(p => p.life > 0);
+  if (pops.length > 40) pops.splice(0, pops.length - 40);
   for (const [k, v] of bumps) { if (v >= 10) bumps.delete(k); else bumps.set(k, v + 1); }
 }
 
@@ -1281,6 +1291,7 @@ function followCam(ease) {
 
 function step() {
   frame++;
+  if (banner && banner.t > 0 && S !== 'paused') banner.t--;
   const jumpHeld = kb.jump || tc.jump;
   jumpPressed = jumpHeld && !jumpPrev; jumpPrev = jumpHeld;
 
@@ -1295,7 +1306,6 @@ function step() {
       break;
     case 'play':
       updatePlats(); updatePlayer(); updateEnts(); updateItems(); updateFx();
-      if (shake > 0) shake *= 0.85;
       if (S !== 'dying') followCam(0.18);
       break;
     case 'dying':
@@ -1338,7 +1348,7 @@ function step() {
       break;
     case 'win':
       timer++;
-      if (timer % 32 === 1) firework(camX + 30 + Math.random() * (bw - 60), 30 + Math.random() * 90);
+      if (timer % 32 === 1 && timer < 600) firework(camX + 30 + Math.random() * (bw - 60), 30 + Math.random() * 90);
       updateFx();
       break;
     default: break;
@@ -1700,7 +1710,7 @@ function starCoin(cx, cy, t, s) {
   g.fillStyle = 'rgba(255,220,120,.25)'; circle(cx, cy + bob, 7 * k, 'rgba(255,220,120,.22)');
   g.save(); g.translate(cx, cy + bob); g.scale(Math.cos(t * 0.05) * 0.25 + 0.85, 1);
   star(0, 0, 5.8 * k, 2.7 * k, 0);
-  g.fillStyle = lin(-6 * k, 6 * k, '#ffe98a', '#f4a51f'); g.fill();
+  g.fillStyle = k === 1 ? (starCoin.gr || (starCoin.gr = lin(-6, 6, '#ffe98a', '#f4a51f'))) : lin(-6 * k, 6 * k, '#ffe98a', '#f4a51f'); g.fill();
   g.strokeStyle = '#d88a14'; g.lineWidth = 0.7; g.stroke();
   ell(-1.4 * k, -1.8 * k, 1.1 * k, 1.8 * k, 'rgba(255,255,255,.75)', -0.5);
   g.restore();
@@ -2191,7 +2201,6 @@ function render() {
   vignette();
   updateMinimap();
   if (banner && banner.t > 0) {
-    banner.t--;
     const a = Math.min(1, banner.t / 20), yb = 34 - Math.max(0, (banner.t - 135)) * 1.5;
     g.globalAlpha = a; g.font = '11px Jua, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
     const w = g.measureText(banner.text).width + 22;
@@ -2232,7 +2241,7 @@ function updateHud() {
   if (L) $('hudBigN').textContent = L.bigGot + '/' + L.bigTotal;
   const hp = $('hudPow'); hp.hidden = !(pw || (P && P.big));
   hp.textContent = pw ? POWERS[pw].name + ' ' + Math.ceil(pwT / 60) + '초' : (P && P.big ? '우유 보호막' : '');
-  $('hudFace').src = CHARS[hero].face; $('mmMe').src = CHARS[hero].face; $('hudFace').classList.toggle('photo', !!CHARS[hero].photo);
+  if (hudHero !== hero) { hudHero = hero; $('hudFace').src = CHARS[hero].face; $('mmMe').src = CHARS[hero].face; $('hudFace').classList.toggle('photo', !!CHARS[hero].photo); }
   $('hudLives').textContent = easy ? '' : '×' + lives;
   $('hudCoins').textContent = '×' + String(coins).padStart(2, '0');
   $('hudScore').textContent = String(score).padStart(6, '0');
@@ -2240,13 +2249,14 @@ function updateHud() {
 }
 const ICON_ON = '<svg viewBox="0 0 20 20"><path d="M3 7h3l5-4v14l-5-4H3z" fill="currentColor"/><path d="M14 6.5c1.2 1 1.8 2.2 1.8 3.5s-.6 2.5-1.8 3.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>';
 const ICON_OFF = '<svg viewBox="0 0 20 20"><path d="M3 7h3l5-4v14l-5-4H3z" fill="currentColor"/><path d="M14 7l4 6M18 7l-4 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+let hudHero = null;
 function syncSoundBtn() { $('btnSound').innerHTML = muted ? ICON_OFF : ICON_ON; }
 syncSoundBtn();
 $('btnFull').hidden = !canFull();
 function toggleMute() {
   muted = !muted; syncSoundBtn();
   try { localStorage.setItem('jinpyo-muted', muted ? '1' : '0'); } catch (e) {}
-  if (master) master.gain.value = muted ? 0 : 0.8;
+  if (master) master.gain.value = muted ? 0 : 0.9;
 }
 
 function showOverlay(html, cls) {
@@ -2257,7 +2267,7 @@ function showOverlay(html, cls) {
 function hideOverlay() { ov.hidden = true; document.body.classList.add('playing'); canvas.focus && canvas.focus(); }
 
 /* 태블릿·휴대폰: 켜자마자 가운데 큰 '전체 화면으로 시작' 버튼 (아이폰은 홈 화면 추가 안내) */
-const GAME_VERSION = 21;
+const GAME_VERSION = 23;
 const PUBLIC_URL = 'https://whitevolt2010.github.io/jinpyo-jinseo-adventure/';
 const isTouch = () => document.body.classList.contains('touch');
 const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -2316,6 +2326,7 @@ function showIntro() {
 }
 function showPause() {
   prevS = S; S = 'paused'; if (AC) AC.suspend();
+  padPtrs.clear(); jumpPtrs.clear(); syncPad(); syncJump();
   showOverlay(`
     <div class="card">
       <div class="name">잠깐 쉬는 중</div>
@@ -2408,8 +2419,9 @@ window.addEventListener('keydown', e => {
   if (k) { kb[k] = true; e.preventDefault(); }
 });
 window.addEventListener('keyup', e => { const k = KB[e.code]; if (k) kb[k] = false; });
-window.addEventListener('blur', () => { kb.left = kb.right = kb.jump = kb.run = false; });
-document.addEventListener('visibilitychange', () => { if (document.hidden && (S === 'play')) showPause(); });
+function releaseAll() { kb.left = kb.right = kb.jump = kb.run = false; padPtrs.clear(); jumpPtrs.clear(); syncPad(); syncJump(); }
+window.addEventListener('blur', releaseAll);
+document.addEventListener('visibilitychange', () => { if (document.hidden) { releaseAll(); if (S === 'play') showPause(); } });
 
 const dpad = $('dpad'), jumpBtn = $('jumpBtn'), zoneL = $('zoneL'), zoneR = $('zoneR');
 const padPtrs = new Map(), jumpPtrs = new Set();
@@ -2455,7 +2467,9 @@ function layout() {
   $('rotate').hidden = !(touch && !rotateDismissed && window.innerHeight > window.innerWidth * 1.1);
   stage.style.width = Math.floor(cw) + 'px'; stage.style.height = Math.floor(ch) + 'px';
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
+  const nw = Math.round(cw * dpr), nh = Math.round(ch * dpr);
+  if (canvas.width !== nw) canvas.width = nw;
+  if (canvas.height !== nh) canvas.height = nh;
   VIEWH = touch ? VH + 58 : VH;
   scale = canvas.height / VIEWH;
   bw = canvas.width / scale;

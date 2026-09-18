@@ -42,6 +42,7 @@
   #app {
     position: relative;
     height: 100%;
+    height: 100dvh;
     padding-inline: 16px;
     box-sizing: border-box;
     display: flex;
@@ -262,6 +263,17 @@
   }
   .chip.off { background: var(--paper); }
   @media (hover: none) { .pick:hover, .btn:hover { transform: none; } }
+  /* 휴대폰 가로처럼 낮은 화면: 첫 화면을 작게 */
+  @container (max-height: 480px) {
+    h1.logo { font-size: 11.5cqh; -webkit-text-stroke-width: 5px; }
+    h1.logo .big { font-size: 1.15em; }
+    .lede, .keys { display: none; }
+    .stack { gap: 2.2cqh; }
+    .pick { padding: .25em .9em .3em; font-size: 5.5cqh; }
+    .pick img { height: 23cqh; }
+    .chip { font-size: 4.2cqh; padding: .35em .9em .3em; }
+    .card { padding: 3cqh 5cqw; }
+  }
   @media (prefers-reduced-motion: reduce) {
     .btn:active, .icon-btn:active { transform: none; }
     .rot-icon { animation: none; }
@@ -282,6 +294,7 @@
       <div class="hud-item" id="hudWorld">1. 진표의 동네</div>
       <div id="minimap"><canvas id="mmCanvas" width="640" height="64"></canvas><img id="mmMe" alt=""></div>
       <div class="hud-btns">
+        <button class="icon-btn" id="btnFull" aria-label="전체 화면" hidden><svg viewBox="0 0 20 20"><path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <button class="icon-btn" id="btnSound" aria-label="소리 끄기/켜기"></button>
         <button class="icon-btn" id="btnPause" aria-label="잠깐 멈추기">
           <svg viewBox="0 0 20 20"><rect x="4" y="3" width="4" height="14" rx="1" fill="currentColor"/><rect x="12" y="3" width="4" height="14" rx="1" fill="currentColor"/></svg>
@@ -2176,6 +2189,24 @@ function render() {
   updateHud();
 }
 
+/* ---------- 전체 화면 ---------- */
+function canFull() {
+  const el = document.documentElement;
+  return !!((el.requestFullscreen || el.webkitRequestFullscreen) && (document.fullscreenEnabled || document.webkitFullscreenEnabled));
+}
+function isFull() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function goFull() {
+  const el = document.documentElement;
+  try {
+    const r = (el.requestFullscreen || el.webkitRequestFullscreen).call(el, { navigationUI: 'hide' });
+    if (r && r.then) r.then(() => { try { screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); } catch (e) {} }).catch(() => {});
+  } catch (e) {}
+}
+function exitFull() { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {} }
+function onFullChange() {
+  setTimeout(layout, 120);
+  if (S === 'title') showTitle();
+}
 /* ---------- HUD & overlays ---------- */
 let hudKey = '';
 function updateHud() {
@@ -2198,6 +2229,7 @@ const ICON_ON = '<svg viewBox="0 0 20 20"><path d="M3 7h3l5-4v14l-5-4H3z" fill="
 const ICON_OFF = '<svg viewBox="0 0 20 20"><path d="M3 7h3l5-4v14l-5-4H3z" fill="currentColor"/><path d="M14 7l4 6M18 7l-4 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 function syncSoundBtn() { $('btnSound').innerHTML = muted ? ICON_OFF : ICON_ON; }
 syncSoundBtn();
+$('btnFull').hidden = !canFull();
 function toggleMute() {
   muted = !muted; syncSoundBtn();
   try { localStorage.setItem('jinpyo-muted', muted ? '1' : '0'); } catch (e) {}
@@ -2225,6 +2257,7 @@ function showTitle() {
           </button>`).join('')}
       </div>
       ${saved > 0 ? `<div class="keys">월드 ${saved + 1}부터 이어서 해요 · <button class="linkish" data-act="restart">처음부터 하기</button></div>` : ''}
+      ${canFull() && !isFull() ? '<button class="chip" data-act="full">전체 화면으로 하기</button>' : ''}
       <button class="chip${easy ? '' : ' off'}" data-act="mode">${easy ? '쉬운 모드 켜짐 · 떨어져도 다시 올라와요' : '보통 모드 · 목숨 5개'}</button>
       ${document.body.classList.contains('touch')
         ? '<div class="keys">왼쪽 아래를 누르면 이동, 오른쪽 아래를 누르면 점프!</div>'
@@ -2302,6 +2335,7 @@ ov.addEventListener('click', e => {
   }
   if (act === 'start') startGame(0);
   else if (act === 'continue') startGame(saved);
+  else if (act === 'full') { goFull(); }
   else if (act === 'mode') { easy = !easy; try { localStorage.setItem('jinpyo-easy', easy ? '1' : '0'); } catch (e) {} showTitle(); }
   else if (act === 'restart') { saved = 0; try { localStorage.setItem('jinpyo-world', '0'); } catch (e) {} showTitle(); }
   else if (act === 'resume') resume();
@@ -2310,6 +2344,9 @@ ov.addEventListener('click', e => {
 });
 $('btnPause').addEventListener('click', () => { if (S === 'play' || S === 'intro') showPause(); else if (S === 'paused') resume(); });
 $('btnSound').addEventListener('click', () => { initAudio(); toggleMute(); });
+$('btnFull').addEventListener('click', () => { initAudio(); if (isFull()) exitFull(); else goFull(); });
+document.addEventListener('fullscreenchange', onFullChange);
+document.addEventListener('webkitfullscreenchange', onFullChange);
 
 /* ---------- Input ---------- */
 const KB = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', Space: 'jump', ArrowUp: 'jump', KeyW: 'jump', KeyZ: 'jump', ShiftLeft: 'run', ShiftRight: 'run', KeyX: 'run' };
@@ -2381,6 +2418,8 @@ function layout() {
   if (L && P && S !== 'title') camX = clamp(camX, 0, L.w * T - bw);
 }
 window.addEventListener('resize', layout);
+window.addEventListener('orientationchange', () => setTimeout(layout, 250));
+if (window.visualViewport) window.visualViewport.addEventListener('resize', layout);
 
 /* ---------- Loop ---------- */
 let last = performance.now(), acc = 0;

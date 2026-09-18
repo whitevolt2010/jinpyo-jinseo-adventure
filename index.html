@@ -172,6 +172,9 @@
   .pick:hover { transform: translateY(-2px); }
   .pick:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ink); }
   .pick:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  .btn.huge { display: inline-flex; align-items: center; gap: .45em; font-size: clamp(22px, 9cqh, 46px); padding: .5em 1.3em .45em; border-radius: 22px; box-shadow: 0 7px 0 var(--ink); animation: pulse 1.6s ease-in-out infinite; }
+  .btn.huge svg { width: 1em; height: 1em; }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
   .linkish { font: inherit; color: var(--sun); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
   img.photo { image-rendering: auto; aspect-ratio: 1; object-fit: contain; filter: drop-shadow(0 2px 0 var(--ink)); }
   .hud-item img.photo { height: 2.4em; margin-block: -.5em; }
@@ -276,7 +279,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .btn:active, .icon-btn:active { transform: none; }
-    .rot-icon { animation: none; }
+    .rot-icon, .btn.huge { animation: none; }
   }
 </style>
 
@@ -2243,6 +2246,21 @@ function showOverlay(html, cls) {
 }
 function hideOverlay() { ov.hidden = true; document.body.classList.add('playing'); canvas.focus && canvas.focus(); }
 
+/* 태블릿·휴대폰: 켜자마자 가운데 큰 '전체 화면으로 시작' 버튼 */
+const isTouch = () => document.body.classList.contains('touch');
+function showSplash() {
+  S = 'title'; Music.stop();
+  loadLevel(0); camX = 0; cpX = null;
+  showOverlay(`
+    <div class="stack">
+      <h1 class="logo">진표와 진서의<span class="big">모<span>험</span></span></h1>
+      <button class="btn huge" data-act="fullstart">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        전체 화면으로 시작!
+      </button>
+      <button class="linkish" data-act="nofull">그냥 이대로 할게요</button>
+    </div>`, 'title');
+}
 function showTitle() {
   S = 'title'; Music.stop();
   loadLevel(0); camX = 0; cpX = null;
@@ -2329,6 +2347,7 @@ ov.addEventListener('click', e => {
   const b = e.target.closest('button[data-act]'); if (!b) return;
   initAudio(); sfx.click();
   const act = b.dataset.act;
+  if (b.dataset.hero && isTouch() && canFull() && !isFull()) goFull(); // 얼굴을 누르면 자동 전체 화면
   if (b.dataset.hero) {
     hero = b.dataset.hero;
     try { localStorage.setItem('jinpyo-hero', hero); } catch (e) {}
@@ -2336,6 +2355,8 @@ ov.addEventListener('click', e => {
   if (act === 'start') startGame(0);
   else if (act === 'continue') startGame(saved);
   else if (act === 'full') { goFull(); }
+  else if (act === 'fullstart') { goFull(); showTitle(); }
+  else if (act === 'nofull') { showTitle(); }
   else if (act === 'mode') { easy = !easy; try { localStorage.setItem('jinpyo-easy', easy ? '1' : '0'); } catch (e) {} showTitle(); }
   else if (act === 'restart') { saved = 0; try { localStorage.setItem('jinpyo-world', '0'); } catch (e) {} showTitle(); }
   else if (act === 'resume') resume();
@@ -2435,7 +2456,8 @@ function boot(data) {
   if (data && data.inGame && typeof data.world === 'number' && LEVELS[data.world]) {
     lives = data.lives || 5; score = data.score || 0; coins = data.coins || 0; cpX = data.cpX ?? null;
     loadLevel(data.world, true); showIntro();
-  } else showTitle();
+  } else if (isTouch() && canFull() && !isFull()) showSplash();
+  else showTitle();
   requestAnimationFrame(t => { last = t; loop(t); });
 }
 try { window.claude?.hot?.snapshot?.(() => ({ inGame: !['title', 'win', 'over'].includes(S), world, lives, score, coins, cpX })); } catch (e) {}
